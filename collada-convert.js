@@ -15,16 +15,33 @@ var ColladaMaterial = require('./includes/collada-material');
 var ColladaAnimation = require('./includes/collada-animation');
 var ColladaSkinning = require('./includes/collada-skinning');
 var ColladaHierarchy = require('./includes/collada-hierarchy');
+var ColladaLighting = require('./includes/collada-lighting');
 
 const MODEL_EXTENSION = '.mdl';
+const SKIP_BINARY = '-skip-binary';
+const SUB_ANIM = '-sub-anim';
+
+const PARAMS = {
+  [SKIP_BINARY]: true,
+  [SUB_ANIM]: true
+};
 
 var args = process.argv.splice(process.execArgv.length + 2);
 var dataFile = args[0];
+var otherArgsMap = args.slice(1).reduce((result, val ) => (result[val] = true, result), {});
 var data = fs.readFileSync(dataFile, 'utf8');
 var fileDir = path.dirname(dataFile);
 var fileExtension = path.extname(dataFile);
 var baseName = path.basename(dataFile, fileExtension);
 var targetFile = path.join(fileDir, baseName + MODEL_EXTENSION);
+
+for (var key in otherArgsMap) {
+  if (!PARAMS[key]) {
+    throw new Error('Unknown param: ' + key + '. Allowed params: ' + Object.keys(PARAMS).join(', '));
+  }
+}
+
+console.info(dataFile, targetFile, otherArgsMap);
 
 class ColladaConvert {
 
@@ -35,16 +52,16 @@ class ColladaConvert {
       this.attributes = ['POSITION', 'NORMAL', 'TEXCOORD0', 'TEXCOORD1', 'WEIGHT'];
       this.attribCount = { 'POSITION': 3, 'NORMAL': 3, 'TEXCOORD0': 2, 'TEXCOORD1': 2, 'WEIGHT': 6 };
 
-      this.config = { includeAttribs: {} };
+      this.config = { includeAttribs: {}, includeBinary: !opts[SKIP_BINARY], isSubAnimation: opts[SUB_ANIM] };
 
       this.includeAttribs = {};
       for (let i = 0; i < this.attributes.length; i++) {
         this.config.includeAttribs[this.attributes[i]] = true;
       }
-      this.config.includeGeometry = true;
-      this.config.includeAnimation = true;
-      this.config.includeHierarchy = true;
-      this.config.includeMaterial = true;
+      this.config.includeGeometry = this.config.includeBinary && !this.config.isSubAnimation;
+      this.config.includeAnimation = this.config.includeBinary;
+      this.config.includeHierarchy = !this.config.isSubAnimation;
+      this.config.includeMaterial = !this.config.isSubAnimation;
 
       if (opts.includeGeometry === false) this.config.includeGeometry = false;
       if (opts.includeAnimation === false) this.config.includeAnimation = false;
@@ -66,9 +83,16 @@ class ColladaConvert {
       this.colladaMaterial = new ColladaMaterial(this.root, opts);
       this.colladaAnimation = new ColladaAnimation(this.root, opts);
       this.colladaSkinning = new ColladaSkinning(this.root, opts);
+      this.colladaLighting = new ColladaLighting(this.root, opts);
       this.colladaGeometry = new ColladaGeometry(this.root, this.attributes, this.attribCount, this.colladaSkinning, this.config);
       this.colladaHierarchy = new ColladaHierarchy(
-        this.root, this.colladaMaterial, this.colladaGeometry, this.colladaSkinning, this.colladaAnimation, opts
+        this.root,
+        this.colladaMaterial,
+        this.colladaGeometry,
+        this.colladaSkinning,
+        this.colladaAnimation,
+        this.colladaLighting,
+        opts
       );
       this.idToNameMap = this.colladaHierarchy.idToNameMap;
 
@@ -89,6 +113,8 @@ class ColladaConvert {
         jsonData.geometry = this.colladaGeometry.getJSON();
       }
 
+      jsonData.lights = this.colladaLighting.getJSON();
+
       if (this.config.includeHierarchy) {
         jsonData.hierarchy = this.colladaHierarchy.hierarchy;
       }
@@ -107,28 +133,33 @@ class ColladaConvert {
 
       let jsonString = JSON.stringify(jsonData);
       let jsonLength = Buffer.byteLength(jsonString);
-      let bufferSize = 2 + jsonLength + this.colladaGeometry.byteSize + this.colladaAnimation.byteSize;
+      let bufferSize = 4 + jsonLength;
+      if (this.config.includeBinary) {
+        bufferSize += this.colladaGeometry.byteSize + this.colladaAnimation.byteSize
+      }
 
       let buffer = new Buffer(bufferSize);
       let currentOffset = 0;
-      buffer.writeUInt16BE(jsonLength, currentOffset);
-      currentOffset += 2;
+
+      buffer.writeUInt32BE(jsonLength, currentOffset);
+      currentOffset += 4;
 
       buffer.write(jsonString, currentOffset, jsonLength);
       currentOffset += jsonLength;
 
-      // Writing geometry
-      let geometryData = this.colladaGeometry.geometryData;
-      for (let i = 0; i < geometryData.length; i++) {
-        currentOffset += this.writeUIntArray(buffer, currentOffset, geometryData[i].indices);
-        currentOffset += this.writeFloatArray(buffer, currentOffset, geometryData[i].vertices);
-      }
+      if (this.config.includeBinary) {
+        // Writing geometry
+        let geometryData = this.colladaGeometry.geometryData;
+        for (let i = 0; i < geometryData.length; i++) {
+          currentOffset += this.writeUIntArray(buffer, currentOffset, geometryData[i].indices);
+          currentOffset += this.writeFloatArray(buffer, currentOffset, geometryData[i].vertices);
+        }
 
-      // Writing animations
-      for (let i = 0; i < animationData.length; i++) {
-        currentOffset += this.writeFloatArray(buffer, currentOffset, animationData[i]);
+        // Writing animations
+        for (let i = 0; i < animationData.length; i++) {
+          currentOffset += this.writeFloatArray(buffer, currentOffset, animationData[i]);
+        }
       }
-
       writeStream.write(buffer);
       writeStream.end();
     }
@@ -155,7 +186,7 @@ let parser = new xml2js.Parser({
 });
 
 parser.parseString(data, function (err, result) {
-  new ColladaConvert(result, {
-    directory: fileDir
-  }).writeData(targetFile);
+  new ColladaConvert(result, Object.assign({
+    directory: fileDir,
+  }, otherArgsMap)).writeData(targetFile);
 });

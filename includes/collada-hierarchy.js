@@ -6,12 +6,13 @@ const EXPORT_MATRIX = false;
 
 module.exports = class ColladaHierarchy {
 
-  constructor (root, material, geometry, skinning, animation, opts = {}) {
+  constructor (root, material, geometry, skinning, animation, lighting, opts = {}) {
     this.opts = opts;
     this.colladaGeometry = geometry;
     this.colladaMaterial = material;
     this.colladaSkinning = skinning;
     this.colladaAnimation = animation;
+    this.colladaLighting = lighting;
     this.geometry = this.colladaGeometry.geometry;
     this.root = root;
     this.visualScenesData = this.root.library_visual_scenes;
@@ -38,8 +39,14 @@ module.exports = class ColladaHierarchy {
 
     object.id = data.$.id;
     object.name = data.$.name;
+    object.sid = data.$.sid;
     object.transform = this.getObjectTransform(data);
     object.geometry = this.getObjectGeometryID(data);
+    object.light = this.getObjectLightID(data);
+
+    var extra = this.getObjectExtra(data);
+    object.originalNodeID = extra.originalNodeID;
+
     let materialID = this.opts.includeMaterial && this.getObjectMaterialID(data);
     object.material = this.colladaMaterial.getMaterial(materialID);
 
@@ -95,6 +102,7 @@ module.exports = class ColladaHierarchy {
 
     joint.id = data.$.id;
     joint.name = data.$.name;
+    joint.sid = data.$.sid;
     joint.transform = this.getObjectTransform(data);
 
     this.idToNameMap[joint.id] = joint.name;
@@ -138,6 +146,15 @@ module.exports = class ColladaHierarchy {
     }
   }
 
+  getObjectLightID (data) {
+    let light = data.instance_light;
+    if (light) {
+      return light[0].$.url.slice(1); // skip first # character
+    }
+
+    return undefined;
+  }
+
   getObjectTransform (data) {
     let matrix = data.matrix;
     if (!matrix) {
@@ -161,6 +178,25 @@ module.exports = class ColladaHierarchy {
       let controllerID = controller[0].$.url.slice(1); // skip first # character
       let controllerData = this.colladaSkinning.controllers[controllerID];
       result = controllerData.geometry;
+    }
+
+    return result;
+  }
+
+  getObjectExtra (data) {
+    if (!data.extra) { return {}; }
+    var extra = data.extra[0];
+    var technique = extra && extra.technique;
+
+    var result = {};
+
+    for (var i = 0; i < technique.length; i++) {
+      var t = technique[i];
+      if (t.$['profile'] === 'OpenCOLLADAMaya') {
+        if (t.originalMayaNodeId) {
+          result.originalNodeID = t.originalMayaNodeId[0]._;
+        }
+      }
     }
 
     return result;

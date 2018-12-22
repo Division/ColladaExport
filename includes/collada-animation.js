@@ -2,7 +2,7 @@
 var util = require('util');
 var math = require('./math');
 
-const EXPORT_MATRIX = false;
+const EXPORT_MATRIX = true;
 
 module.exports = class ColladaAnimation {
 
@@ -36,7 +36,7 @@ module.exports = class ColladaAnimation {
 
     animation.objects = this.animationOrder.reduce((result, objectName) => {
       let animationData = this.getAnimationForObject(objectName);
-      animationData.name = idToName[objectName] || objectName;
+      animationData.name = objectName; // ID of the animation
       result.push(animationData);
 
       return result;
@@ -161,13 +161,13 @@ module.exports = class ColladaAnimation {
     }
 
     let firstScale = scaleList[0];
-    let hasOtherScale = false;
-    for (let i = 0; i < scaleList.length; i++) {
-      if (!math.compare(firstScale, scaleList[i])) {
-        hasOtherScale = true;
-        break;
-      }
-    }
+    let hasOtherScale = true; // Force write scale for now
+    // for (let i = 0; i < scaleList.length; i++) {
+    //   if (!math.compare(firstScale, scaleList[i])) {
+    //     hasOtherScale = true;
+    //     break;
+    //   }
+    // }
 
     let resultList = [];
 
@@ -185,7 +185,7 @@ module.exports = class ColladaAnimation {
     animation.hasPosition = true && !isMatrix;
     animation.hasRotation = true && !isMatrix;
     animation.frameCount = count;
-    animation.hasScale = hasOtherScale && !isMatrix;
+    animation.hasScale = (true || hasOtherScale) && !isMatrix;
     animation.isMatrix = isMatrix;
     animation.data = resultList;
   }
