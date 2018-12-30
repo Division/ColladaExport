@@ -44,6 +44,7 @@ module.exports = class ColladaGeometry {
 
       this.json.push({
         name: geomName,
+        bounds: this.getGeometryBounds(geom),
         indexCount: targetData.indexCount,
         vertexCount: targetData.vertexCount,
         attributes: attribList,
@@ -301,6 +302,21 @@ module.exports = class ColladaGeometry {
     }
 
     return -1;
+  }
+
+  getGeometryBounds(geom) {
+    const POSITION = 'POSITION';
+
+    let vertices = geom.targetData.vertices;
+    let first = vertices[0][POSITION]; // array if 3 elements
+    let aabb = { min: first, max: first };
+
+    for (let i = 0; i < vertices.length; i++) {
+      aabb.min = math.minArray(aabb.min, vertices[i][POSITION]);
+      aabb.max = math.maxArray(aabb.max, vertices[i][POSITION]);
+    }
+
+    return aabb;
   }
 
   getTargetFloatArray (geom) {

@@ -189,6 +189,24 @@ exports.compare = function (arr1, arr2) {
     return true;
 }
 
+exports.minArray = function(arr1, arr2) {
+    let result = [];
+    let count = Math.min(arr1.length, arr2.length);
+    for (let i = 0; i < count; i++) {
+        result.push(Math.min(arr1[i], arr2[i]));
+    }
+    return result;
+}
+
+exports.maxArray = function(arr1, arr2) {
+    let result = [];
+    let count = Math.min(arr1.length, arr2.length);
+    for (let i = 0; i < count; i++) {
+        result.push(Math.max(arr1[i], arr2[i]));
+    }
+    return result;
+}
+
 exports.addArrayToArray = function (array, arrayToAdd, index, count) {
     for (let i = 0; i < count; i++) {
         array.push(arrayToAdd[index + i]);
